@@ -1,0 +1,1 @@
+{"source": {"server": "DMDULB1FITRN040\\SQLEXPRESS", "database": "sample", "username": "pgload", "password": "pgload"}, "target": {"server": "localhost", "port": 5432, "database": "sample", "username": "postgres", "password": "admin"}}

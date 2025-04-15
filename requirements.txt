@@ -1,0 +1,5 @@
+PyQt5
+pyodbc
+psycopg2
+pandas
+sqlalchemy

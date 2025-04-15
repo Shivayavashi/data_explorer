@@ -1,0 +1,493 @@
+// Visualization functionality to integrate with existing generateData function
+let visualizationState = {
+    currentData: null,
+    currentColumns: null,
+    chart: null
+};
+
+// Initialize visualization components
+function initializeVisualization() {
+    // Add visualization button and container after table-container
+    const tableContainer = document.querySelector('.table-container');
+    if (!tableContainer) return;
+    
+    // Check if visualization container already exists
+    if (!document.getElementById('visualization-container')) {
+        const visualizationHTML = `
+            <div class="mt-6 mb-4">
+                <button id="show-visualization-btn" class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700">
+                    Show Visualizations
+                </button>
+            </div>
+            <div id="visualization-container" class="hidden">
+                <div class="bg-white shadow rounded-lg p-4 mb-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-medium">Data Visualization</h3>
+                        <button id="close-visualization-btn" class="text-gray-500 hover:text-gray-700">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="viz-controls grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Chart Type</label>
+                            <select id="chart-type" class="w-full border rounded p-2">
+                                <option value="bar">Bar Chart</option>
+                                <option value="pie">Pie Chart</option>
+                                <option value="line">Line Chart</option>
+                                <option value="scatter">Scatter Plot</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">X-Axis/Category</label>
+                            <select id="x-axis-field" class="w-full border rounded p-2">
+                                <option value="">Select a field</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Y-Axis/Value</label>
+                            <select id="y-axis-field" class="w-full border rounded p-2">
+                                <option value="">Select a field</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="chart-container" style="position: relative; height: 400px;">
+                        <canvas id="visualization-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Insert after table container
+        tableContainer.insertAdjacentHTML('afterend', visualizationHTML);
+        
+        // Add event listeners
+        document.getElementById('show-visualization-btn').addEventListener('click', toggleVisualization);
+        document.getElementById('close-visualization-btn').addEventListener('click', toggleVisualization);
+        document.getElementById('chart-type').addEventListener('change', updateVisualization);
+        document.getElementById('x-axis-field').addEventListener('change', updateVisualization);
+        document.getElementById('y-axis-field').addEventListener('change', updateVisualization);
+    }
+}
+
+// Toggle visualization panel visibility
+function toggleVisualization() {
+    const vizContainer = document.getElementById('visualization-container');
+    if (vizContainer.classList.contains('hidden')) {
+        vizContainer.classList.remove('hidden');
+        
+        // If we have data already, prepare visualization
+        if (visualizationState.currentData && visualizationState.currentColumns) {
+            prepareVisualizationControls(visualizationState.currentColumns);
+            updateVisualization();
+        } else {
+            // Try to get data from the table
+            captureTableData();
+        }
+    } else {
+        vizContainer.classList.add('hidden');
+    }
+}
+
+// Capture data from the generated table
+function captureTableData() {
+    const table = document.getElementById('data-table');
+    if (!table) {
+        showMessage('No data table found. Generate data first.', 'error');
+        return;
+    }
+    
+    // Get headers
+    const headers = [];
+    const headerCells = table.querySelectorAll('thead th');
+    headerCells.forEach(cell => {
+        headers.push(cell.textContent.trim().replace(/[↑↓\s]+$/, ''));
+    });
+    
+    // Get data
+    const data = [];
+    const rows = table.querySelectorAll('tbody tr');
+    rows.forEach(row => {
+        const rowData = {};
+        row.querySelectorAll('td').forEach((cell, index) => {
+            rowData[headers[index]] = cell.textContent.trim();
+        });
+        data.push(rowData);
+    });
+    
+    if (data.length === 0) {
+        showMessage('No data available for visualization', 'error');
+        return;
+    }
+    
+    // Store captured data
+    visualizationState.currentData = data;
+    visualizationState.currentColumns = headers;
+    
+    // Prepare controls
+    prepareVisualizationControls(headers);
+}
+
+// Store data from the generateData response for visualization
+function storeDataForVisualization(columns, data) {
+    visualizationState.currentData = data;
+    visualizationState.currentColumns = columns;
+    
+    // If visualization is already visible, update the controls
+    const vizContainer = document.getElementById('visualization-container');
+    if (vizContainer && !vizContainer.classList.contains('hidden')) {
+        prepareVisualizationControls(columns);
+        updateVisualization();
+    }
+}
+
+// Prepare visualization controls with column options
+function prepareVisualizationControls(columns) {
+    const xAxisSelect = document.getElementById('x-axis-field');
+    const yAxisSelect = document.getElementById('y-axis-field');
+    
+    // Clear existing options
+    xAxisSelect.innerHTML = '<option value="">Select a field</option>';
+    yAxisSelect.innerHTML = '<option value="">Select a field</option>';
+    
+    // Add column options
+    columns.forEach(column => {
+        xAxisSelect.innerHTML += `<option value="${column}">${column}</option>`;
+        yAxisSelect.innerHTML += `<option value="${column}">${column}</option>`;
+    });
+    
+    // Select first column for X-axis by default
+    if (columns.length > 0) {
+        xAxisSelect.value = columns[0];
+        
+        // Try to find a numeric column for Y-axis
+        const numericColumn = findNumericColumn();
+        if (numericColumn) {
+            yAxisSelect.value = numericColumn;
+        } else if (columns.length > 1) {
+            yAxisSelect.value = columns[1];
+        } else {
+            yAxisSelect.value = columns[0]; // Fallback to first column
+        }
+    }
+}
+
+// Find a numeric column for the Y-axis
+function findNumericColumn() {
+    if (!visualizationState.currentData || visualizationState.currentData.length === 0) return null;
+    
+    const firstRow = visualizationState.currentData[0];
+    
+    for (const column of visualizationState.currentColumns) {
+        const value = firstRow[column];
+        // Check if value is a number or can be converted to a number
+        if (!isNaN(Number(value)) && value !== '') {
+            return column;
+        }
+    }
+    
+    return null;
+}
+
+// Update visualization based on selected options
+function updateVisualization() {
+    const chartType = document.getElementById('chart-type').value;
+    const xField = document.getElementById('x-axis-field').value;
+    const yField = document.getElementById('y-axis-field').value;
+    
+    if (!xField || !yField) {
+        return; // Don't proceed without fields selected
+    }
+    
+    const ctx = document.getElementById('visualization-chart').getContext('2d');
+    
+    // Destroy existing chart if it exists
+    if (visualizationState.chart) {
+        visualizationState.chart.destroy();
+    }
+    
+    // Prepare data for the chart
+    switch (chartType) {
+        case 'bar':
+            renderBarChart(ctx, xField, yField);
+            break;
+        case 'pie':
+            renderPieChart(ctx, xField, yField);
+            break;
+        case 'line':
+            renderLineChart(ctx, xField, yField);
+            break;
+        case 'scatter':
+            renderScatterChart(ctx, xField, yField);
+            break;
+    }
+}
+
+// Render a bar chart
+function renderBarChart(ctx, xField, yField) {
+    // Group and aggregate data
+    const aggregatedData = aggregateData(xField, yField);
+    
+    visualizationState.chart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: aggregatedData.labels,
+            datasets: [{
+                label: yField,
+                data: aggregatedData.values,
+                backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: yField
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: xField
+                    }
+                }
+            },
+            plugins: {
+                title: {
+                    display: true,
+                    text: `${yField} by ${xField}`
+                }
+            }
+        }
+    });
+}
+
+// Render a pie chart
+function renderPieChart(ctx, xField, yField) {
+    // Group and aggregate data
+    const aggregatedData = aggregateData(xField, yField);
+    
+    // Generate colors
+    const colors = generateColors(aggregatedData.labels.length);
+    
+    visualizationState.chart = new Chart(ctx, {
+        type: 'pie',
+        data: {
+            labels: aggregatedData.labels,
+            datasets: [{
+                data: aggregatedData.values,
+                backgroundColor: colors,
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                title: {
+                    display: true,
+                    text: `${yField} by ${xField}`
+                },
+                legend: {
+                    position: 'right'
+                }
+            }
+        }
+    });
+}
+
+// Render a line chart
+function renderLineChart(ctx, xField, yField) {
+    // Group and aggregate data
+    const aggregatedData = aggregateData(xField, yField);
+    
+    visualizationState.chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: aggregatedData.labels,
+            datasets: [{
+                label: yField,
+                data: aggregatedData.values,
+                fill: false,
+                borderColor: 'rgb(75, 192, 192)',
+                tension: 0.1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: yField
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: xField
+                    }
+                }
+            },
+            plugins: {
+                title: {
+                    display: true,
+                    text: `${yField} by ${xField}`
+                }
+            }
+        }
+    });
+}
+
+// Render a scatter chart
+function renderScatterChart(ctx, xField, yField) {
+    const data = visualizationState.currentData;
+    const dataPoints = [];
+    
+    // Get each individual data point for scatter plot
+    data.forEach(row => {
+        const xValue = Number(row[xField]);
+        const yValue = Number(row[yField]);
+        
+        // Only add valid numeric points
+        if (!isNaN(xValue) && !isNaN(yValue)) {
+            dataPoints.push({
+                x: xValue,
+                y: yValue
+            });
+        }
+    });
+    
+    visualizationState.chart = new Chart(ctx, {
+        type: 'scatter',
+        data: {
+            datasets: [{
+                label: `${xField} vs ${yField}`,
+                data: dataPoints,
+                backgroundColor: 'rgba(75, 192, 192, 0.5)',
+                borderColor: 'rgba(75, 192, 192, 1)',
+                borderWidth: 1,
+                pointRadius: 5,
+                pointHoverRadius: 7
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    type: 'linear',
+                    position: 'bottom',
+                    title: {
+                        display: true,
+                        text: xField
+                    }
+                },
+                y: {
+                    title: {
+                        display: true,
+                        text: yField
+                    }
+                }
+            },
+            plugins: {
+                title: {
+                    display: true,
+                    text: `${xField} vs ${yField} Scatter Plot`
+                }
+            }
+        }
+    });
+}
+
+// Helper function to aggregate data for charts
+function aggregateData(xField, yField) {
+    const data = visualizationState.currentData;
+    const aggregates = {};
+    const counts = {};
+    
+    // Group data by xField
+    data.forEach(row => {
+        const xValue = row[xField];
+        const yValue = Number(row[yField]);
+        
+        if (xValue && !isNaN(yValue)) {
+            if (!aggregates[xValue]) {
+                aggregates[xValue] = 0;
+                counts[xValue] = 0;
+            }
+            
+            aggregates[xValue] += yValue;
+            counts[xValue]++;
+        }
+    });
+    
+    // Convert to arrays for Chart.js
+    const labels = Object.keys(aggregates);
+    
+    // Calculate average if needed
+    const values = labels.map(label => aggregates[label]);
+    
+    return { labels, values };
+}
+
+// Generate colors for charts
+function generateColors(count) {
+    const baseColors = [
+        'rgba(255, 99, 132, 0.7)',
+        'rgba(54, 162, 235, 0.7)',
+        'rgba(255, 206, 86, 0.7)',
+        'rgba(75, 192, 192, 0.7)',
+        'rgba(153, 102, 255, 0.7)',
+        'rgba(255, 159, 64, 0.7)',
+        'rgba(199, 199, 199, 0.7)',
+        'rgba(83, 102, 255, 0.7)',
+        'rgba(40, 159, 64, 0.7)',
+        'rgba(210, 199, 199, 0.7)'
+    ];
+    
+    // If we need more colors than in our base set
+    const colors = [];
+    for (let i = 0; i < count; i++) {
+        colors.push(baseColors[i % baseColors.length]);
+    }
+    
+    return colors;
+}
+
+// Extend the existing generateData function to store data for visualization
+const originalGenerateData = window.generateData || function(){};
+
+window.generateData = function(page = 1, resetSort = false) {
+    // Call the original function
+    originalGenerateData(page, resetSort);
+    
+    // Modify the success callback to capture data for visualization
+    const originalSuccess = $.ajax.success;
+    $.ajax.success = function(response) {
+        // Original success handler
+        originalSuccess(response);
+        
+        // Capture data for visualization
+        if (response && response.columns && response.data) {
+            storeDataForVisualization(response.columns, response.data);
+        }
+    };
+    
+    // Initialize visualization components if not already
+    initializeVisualization();
+};
+
+// Initialize visualization when the document is ready
+$(document).ready(function() {
+    initializeVisualization();
+});
